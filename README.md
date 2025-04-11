@@ -7,6 +7,9 @@ Google Cloud Platform for data Storage
 Google BigQuery for data processing 
 Looker Studio for data analysis
 
+
+Note: There is a pdf document in the Data folder that explains each parameter/column in the csv files.
+
 🚀 Project Setup & Execution Guide
 This project focuses on building a data pipeline using Kestra, Google Cloud Storage, BigQuery, and Looker Studio for data analysis and visualization. Follow the steps below to replicate the project end-to-end:
 

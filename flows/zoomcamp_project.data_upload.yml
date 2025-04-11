@@ -1,0 +1,162 @@
+id: data_upload
+namespace: zoomcamp_project
+
+inputs:
+  - id: month
+    type: SELECT
+    displayName: Select month
+    values: ["Jan", "Feb", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    defaults: "Jan"
+
+variables:
+  file: "freightinfo_{{inputs.month}}.csv"
+  gcs_file: "gs://{{kv('GCP_BUCKET_NAME')}}/{{vars.file}}"
+  table: "{{kv('GCP_DATASET')}}.freight_data_{{inputs.month}}"
+  data: "{{outputs.extract.outputFiles[inputs.month ~ '2024.csv']}}"
+
+tasks:
+  - id: set_label
+    type: io.kestra.plugin.core.execution.Labels
+    labels:
+      file: "{{render(vars.file)}}"
+
+  - id: extract
+    type: io.kestra.plugin.scripts.shell.Commands
+    outputFiles:
+      - "*.csv"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - wget -q "https://github.com/ArunDharavath/DE-Zoomcamp/raw/main/Project/Data/{{inputs.month}}2024.csv"
+
+  - id: upload_to_gcs
+    type: io.kestra.plugin.gcp.gcs.Upload
+    from: "{{render(vars.data)}}"
+    to: "{{render(vars.gcs_file)}}"
+
+  - id: freight_data_table
+    type: io.kestra.plugin.gcp.bigquery.Query
+    sql: |
+      CREATE TABLE IF NOT EXISTS `{{kv('GCP_PROJECT_ID')}}.{{kv('GCP_DATASET')}}.freight_data_{{inputs.month}}2024`
+      (
+        TRDTYPE INT OPTIONS (description = 'import(1) or export(2)'),
+        USASTATE STRING OPTIONS (description = 'US State Code'),      
+        COMMODITY2 INT OPTIONS (description = 'Commodity Classification Code'),
+        DISAGMOT INT OPTIONS (description = 'Mode of Transportation Code'),
+        MEXSTATE STRING OPTIONS (description = 'Mexican State Code'),
+        CANPROV STRING OPTIONS (description = 'Canadian Province Code'),
+        COUNTRY INT OPTIONS (description = 'COUNTRY Code'),
+        VALUE INT OPTIONS (description = 'Value of Goods in United States Dollars'),
+        SHIPWT INT OPTIONS (description = 'Shipping Weight'),
+        FREIGHT_CHARGES INT OPTIONS (description = 'Freight Charges in U.S. Dollars'),
+        DF INTEGER OPTIONS (description = 'Distinguishes whether the merchandise was produced in the U.S. 1 - Domestic, 2 - Foreign'),
+        CONTCODE STRING OPTIONS (description = 'X - Containerized, 0 - Uncotainerized'),
+        MONTH INT OPTIONS (description = 'Month'),
+        YEAR INT OPTIONS (description = 'Year')
+      );
+
+  # - id: if_not_dec_month
+  #   type: io.kestra.plugin.core.flow.If
+  #   condition: "{{inputs.month != 'December'}}"
+  #   then:
+  - id: freight_data_table_ext
+    type: io.kestra.plugin.gcp.bigquery.Query
+    sql: |
+      CREATE OR REPLACE EXTERNAL TABLE `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}_ext`
+      (
+        TRDTYPE INT OPTIONS (description = 'import(1) or export(2)'),
+        USASTATE STRING OPTIONS (description = 'US State Code'),      
+        COMMODITY2 INT OPTIONS (description = 'Commodity Classification Code'),
+        DISAGMOT INT OPTIONS (description = 'Mode of Transportation Code'),
+        MEXSTATE STRING OPTIONS (description = 'Mexican State Code'),
+        CANPROV STRING OPTIONS (description = 'Canadian Province Code'),
+        COUNTRY INT OPTIONS (description = 'COUNTRY Code'),
+        VALUE INT OPTIONS (description = 'Value of Goods in United States Dollars'),
+        SHIPWT INT OPTIONS (description = 'Shipping Weight'),
+        FREIGHT_CHARGES INT OPTIONS (description = 'Freight Charges in U.S. Dollars'),
+        DF INTEGER OPTIONS (description = 'Distinguishes whether the merchandise was produced in the U.S. 1 - Domestic, 2 - Foreign'),
+        CONTCODE STRING OPTIONS (description = 'X - Containerized, 0 - Uncotainerized'),
+        MONTH INT OPTIONS (description = 'Month'),
+        YEAR INT OPTIONS (description = 'Year')
+      )
+      OPTIONS (
+          format = 'CSV',
+          uris = ['{{render(vars.gcs_file)}}'],
+          skip_leading_rows = 1,
+          ignore_unknown_values = TRUE
+      );
+
+  - id: merge_tables
+    type: io.kestra.plugin.gcp.bigquery.Query
+    sql: |
+      MERGE INTO `{{kv('GCP_PROJECT_ID')}}.{{kv('GCP_DATASET')}}.freight_data_{{inputs.month}}2024` T
+      USING `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}_ext` S
+      ON T.year = S.year
+      WHEN NOT MATCHED THEN
+        INSERT (TRDTYPE, USASTATE, COMMODITY2, DISAGMOT, MEXSTATE, CANPROV, COUNTRY, VALUE, SHIPWT, FREIGHT_CHARGES, DF, CONTCODE, MONTH, YEAR)
+        VALUES (S.TRDTYPE, S.USASTATE, S.COMMODITY2, S.DISAGMOT, S.MEXSTATE, S.CANPROV, S.COUNTRY, S.VALUE, S.SHIPWT, S.FREIGHT_CHARGES, S.DF, S.CONTCODE, S.MONTH, S.YEAR);
+
+  # - id: if_dec_month
+  #   type: io.kestra.plugin.core.flow.If
+  #   condition: "{{inputs.month == 'December'}}"
+  #   then:
+  #     - id: freight_data_table_ext_Dec
+  #       type: io.kestra.plugin.gcp.bigquery.Query
+  #       sql: |
+  #         CREATE OR REPLACE EXTERNAL TABLE `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}_ext`
+  #         (
+  #           TRDTYPE INT OPTIONS (description = 'import(1) or export(2)'),
+  #           USASTATE STRING OPTIONS (description = 'US State Code'),      
+  #           COMMODITY2 INT OPTIONS (description = 'Commodity Classification Code'),
+  #           DISAGMOT INT OPTIONS (description = 'Mode of Transportation Code'),
+  #           MEXSTATE STRING OPTIONS (description = 'Mexican State Code'),
+  #           CANPROV STRING OPTIONS (description = 'Canadian Province Code'),
+  #           COUNTRY INT OPTIONS (description = 'COUNTRY Code'),
+  #           DF INTEGER OPTIONS (description = 'Distinguishes whether the merchandise was produced in the U.S. 1 - Domestic, 2 - Foreign'),
+  #           CONTCODE STRING OPTIONS (description = 'X - Containerized, 0 - Uncontainerized'),
+  #           YEAR INT OPTIONS (description = 'Year'),
+  #           VALUE INT OPTIONS (description = 'Value of Goods in United States Dollars'),
+  #           SHIPWT INT OPTIONS (description = 'Shipping Weight'),
+  #           FREIGHT_CHARGES INT OPTIONS (description = 'Freight Charges in U.S. Dollars')
+  #         )
+  #         OPTIONS (
+  #             format = 'CSV',
+  #             uris = ['{{render(vars.gcs_file)}}'],
+  #             skip_leading_rows = 1,
+  #             ignore_unknown_values = TRUE
+  #         );
+      
+  #     - id: freight_data_tmp
+  #       type: io.kestra.plugin.gcp.bigquery.Query
+  #       sql: |
+  #         CREATE OR REPLACE TABLE `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}_tmp`
+  #           AS
+  #           SELECT
+  #           *,
+  #           4 AS month
+  #         FROM `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}_ext`;
+      
+  #     - id: merge_tables_Dec
+  #       type: io.kestra.plugin.gcp.bigquery.Query
+  #       sql: |
+  #         MERGE INTO `{{kv('GCP_PROJECT_ID')}}.{{kv('GCP_DATASET')}}.freight_data_{{inputs.month}}2024` T
+  #         USING `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}_tmp` S
+  #         ON T.year = S.year
+  #         WHEN NOT MATCHED THEN
+  #           INSERT (TRDTYPE, USASTATE, COMMODITY2, DISAGMOT, MEXSTATE, CANPROV, COUNTRY, VALUE, SHIPWT, FREIGHT_CHARGES, DF, CONTCODE, MONTH, YEAR)
+  #           VALUES (S.TRDTYPE, S.USASTATE, S.COMMODITY2, S.DISAGMOT, S.MEXSTATE, S.CANPROV, S.COUNTRY, S.VALUE, S.SHIPWT, S.FREIGHT_CHARGES, S.DF, S.CONTCODE, S.MONTH, S.YEAR);
+
+  
+      
+  - id: purge_files
+    type: io.kestra.plugin.core.storage.PurgeCurrentExecutionFiles
+    description: If you'd like to explore Kestra outputs, disable it.
+    disabled: false
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      serviceAccount: "{{kv('GCP_CREDS')}}"
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      bucket: "{{kv('GCP_BUCKET_NAME')}}"
