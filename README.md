@@ -10,6 +10,10 @@ Looker Studio for data analysis
 
 Note: There is a pdf document in the Data folder that explains each parameter/column in the csv files.
 
+**Problem Description**
+
+The dataset contains data on the import and export of goods between the United States and Canada and Mexico. The import/exports are characterized and categorized by various features such as price of transportation, weight of goods being transported, between which states/provinces this activity takes place, what types of goods are being transported, means of transportation, and other features. The goal of this project is to analyse the cost of imports and exports throughout 2024, which mode of transportation has the highest value of goods being shipped, major contributer of the US towards import and export.
+
 🚀 **Project Setup & Execution Guide**
 
 This project focuses on building a data pipeline using Kestra, Google Cloud Storage, BigQuery, and Looker Studio for data analysis and visualization. Follow the steps below to replicate the project end-to-end:
